@@ -30,7 +30,11 @@ public interface IProjectsManager {
 	/**
 	 * Intialize the workspace and import the projects under the rootPaths.
 	 */
-	void initializeProjects(final Collection<IPath> rootPaths, IProgressMonitor monitor) throws CoreException;
+	default void initializeProjects(final Collection<IPath> rootPaths, IProgressMonitor monitor) throws CoreException {
+		initializeProjects(rootPaths, Optional.empty(), monitor);
+	}
+
+	void initializeProjects(final Collection<IPath> rootPaths, Optional<IPath> subProjectPath, IProgressMonitor monitor) throws CoreException;
 
 	/**
 	 * Clean up the projects not belonged to the give rootPaths.
@@ -69,7 +73,9 @@ public interface IProjectsManager {
 
 	/**
 	 * Update the watcher patterns.
-	 * @param runInJob - whether to run the action in a job
+	 *
+	 * @param runInJob
+	 *            - whether to run the action in a job
 	 */
 	void registerWatchers(boolean runInJob);
 

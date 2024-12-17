@@ -34,6 +34,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -153,6 +154,8 @@ public class Preferences {
 	 */
 	public static final String JAVA_RESOURCE_FILTERS = "java.project.resourceFilters";
 	public static final List<String> JAVA_RESOURCE_FILTERS_DEFAULT;
+
+	public static final String JAVA_SUB_PROJECT = "java.project.subProjectPath";
 	/**
 	 * Preference key for Show quickfixes at the problem or line level.
 	 */
@@ -346,7 +349,8 @@ public class Preferences {
 	public static final String COMPLETION_MATCH_CASE_MODE_KEY = "java.completion.matchCase";
 
 	/**
-	 * Preference key to specify whether text edit of completion item can be lazily resolved.
+	 * Preference key to specify whether text edit of completion item can be lazily
+	 * resolved.
 	 */
 	public static final String COMPLETION_LAZY_RESOLVE_TEXT_EDIT_ENABLED_KEY = "java.completion.lazyResolveTextEdit.enabled";
 
@@ -540,10 +544,11 @@ public class Preferences {
 	public static final String CHAIN_COMPLETION_KEY = "java.completion.chain.enabled";
 
 	/**
-	 * Preference key to set the scope value to use when searching java code. Allowed value are
+	 * Preference key to set the scope value to use when searching java code.
+	 * Allowed value are
 	 * <ul>
-	 * <li><code>main</code>			-	Scope for main code</li>
-	 * <li><code>all</code>				-	Scope for both test and main code</li>
+	 * <li><code>main</code> - Scope for main code</li>
+	 * <li><code>all</code> - Scope for both test and main code</li>
 	 * </ul>
 	 * Any other unknown value will be treated as <code>all</code>.
 	 */
@@ -686,6 +691,7 @@ public class Preferences {
 	private String settingsUrl;
 	private String formatterProfileName;
 	private Collection<IPath> rootPaths;
+	private Optional<IPath> subProjectPath;
 	private Collection<IPath> triggerFiles;
 	private Collection<IPath> projectConfigurations;
 	private int parallelBuildsCount;
@@ -761,7 +767,7 @@ public class Preferences {
 				String val = value.toLowerCase();
 				try {
 					return valueOf(val);
-				} catch(Exception e) {
+				} catch (Exception e) {
 					//fall back to default severity
 				}
 			}
@@ -780,14 +786,14 @@ public class Preferences {
 	}
 
 	public static enum FeatureStatus {
-		disabled, interactive, automatic ;
+		disabled, interactive, automatic;
 
 		static FeatureStatus fromString(String value, FeatureStatus defaultStatus) {
 			if (value != null) {
 				String val = value.toLowerCase();
 				try {
 					return valueOf(val);
-				} catch(Exception e) {
+				} catch (Exception e) {
 					//fall back to default severity
 				}
 			}
@@ -803,7 +809,7 @@ public class Preferences {
 				String val = value.toLowerCase();
 				try {
 					return valueOf(val);
-				} catch(Exception e) {
+				} catch (Exception e) {
 					//fall back to default severity
 				}
 			}
@@ -878,9 +884,7 @@ public class Preferences {
 				return false;
 			}
 			ReferencedLibraries other = (ReferencedLibraries) obj;
-			return Objects.equals(include, other.include)
-				&& Objects.equals(exclude, other.exclude)
-				&& Objects.equals(sources, other.sources);
+			return Objects.equals(include, other.include) && Objects.equals(exclude, other.exclude) && Objects.equals(sources, other.sources);
 		}
 
 	}
@@ -1029,8 +1033,7 @@ public class Preferences {
 		prefs.setIncompleteClasspathSeverity(Severity.fromString(incompleteClasspathSeverity, Severity.warning));
 
 		String updateBuildConfiguration = getString(configuration, CONFIGURATION_UPDATE_BUILD_CONFIGURATION_KEY, null);
-		prefs.setUpdateBuildConfigurationStatus(
-				FeatureStatus.fromString(updateBuildConfiguration, FeatureStatus.interactive));
+		prefs.setUpdateBuildConfigurationStatus(FeatureStatus.fromString(updateBuildConfiguration, FeatureStatus.interactive));
 
 		boolean importGradleEnabled = getBoolean(configuration, IMPORT_GRADLE_ENABLED, true);
 		prefs.setImportGradleEnabled(importGradleEnabled);
@@ -1101,6 +1104,11 @@ public class Preferences {
 		boolean autobuildEnable = getBoolean(configuration, AUTOBUILD_ENABLED_KEY, true);
 		prefs.setAutobuildEnabled(autobuildEnable);
 
+		String subProjectPath = getString(configuration, JAVA_SUB_PROJECT);
+		if (subProjectPath != null) {
+			prefs.setSubProjectPath(subProjectPath);
+		}
+
 		boolean completionEnable = getBoolean(configuration, COMPLETION_ENABLED_KEY, true);
 		prefs.setCompletionEnabled(completionEnable);
 
@@ -1124,12 +1132,10 @@ public class Preferences {
 
 		Object guessMethodArguments = getValue(configuration, JAVA_COMPLETION_GUESS_METHOD_ARGUMENTS_KEY);
 		if (guessMethodArguments instanceof Boolean b) {
-			prefs.setGuessMethodArgumentsMode(b ? CompletionGuessMethodArgumentsMode.INSERT_BEST_GUESSED_ARGUMENTS :
-					CompletionGuessMethodArgumentsMode.INSERT_PARAMETER_NAMES);
+			prefs.setGuessMethodArgumentsMode(b ? CompletionGuessMethodArgumentsMode.INSERT_BEST_GUESSED_ARGUMENTS : CompletionGuessMethodArgumentsMode.INSERT_PARAMETER_NAMES);
 		} else {
 			String guessMethodArgumentsMode = getString(configuration, JAVA_COMPLETION_GUESS_METHOD_ARGUMENTS_KEY, null);
-			prefs.setGuessMethodArgumentsMode(CompletionGuessMethodArgumentsMode.fromString(guessMethodArgumentsMode,
-					CompletionGuessMethodArgumentsMode.INSERT_PARAMETER_NAMES));
+			prefs.setGuessMethodArgumentsMode(CompletionGuessMethodArgumentsMode.fromString(guessMethodArgumentsMode, CompletionGuessMethodArgumentsMode.INSERT_PARAMETER_NAMES));
 		}
 
 		boolean collapseCompletionItemsEnabled = getBoolean(configuration, JAVA_COMPLETION_COLLAPSE_KEY, false);
@@ -1353,7 +1359,7 @@ public class Preferences {
 		prefs.setNullAnalysisMode(FeatureStatus.fromString(nullAnalysisMode, FeatureStatus.disabled));
 		List<String> cleanupActionsTemp = getList(configuration, JAVA_CLEANUPS_ACTIONS_ON_SAVE_DEPRECATED, Collections.emptyList());
 		List<String> cleanupActions = getList(configuration, JAVA_CLEANUPS_ACTIONS, Collections.emptyList());
-		if(cleanupActions.isEmpty() && !cleanupActionsTemp.isEmpty()) {
+		if (cleanupActions.isEmpty() && !cleanupActionsTemp.isEmpty()) {
 			cleanupActions = cleanupActionsTemp;
 		}
 		prefs.setCleanUpActions(cleanupActions);
@@ -2121,6 +2127,15 @@ public class Preferences {
 		return rootPaths;
 	}
 
+	public Preferences setSubProjectPath(String subProjectPath) {
+		this.subProjectPath = Optional.of(ResourceUtils.canonicalFilePathFromURI(subProjectPath));
+		return this;
+	}
+
+	public Optional<IPath> getSubProjectPath() {
+		return subProjectPath;
+	}
+
 	public Preferences setTriggerFiles(Collection<IPath> triggerFiles) {
 		this.triggerFiles = triggerFiles;
 		return this;
@@ -2444,8 +2459,8 @@ public class Preferences {
 	}
 
 	/**
-	 * update the null analysis options of all projects based on the null analysis mode
-	 * Returns the list of enabled clean ups.
+	 * update the null analysis options of all projects based on the null analysis
+	 * mode Returns the list of enabled clean ups.
 	 *
 	 * @return the list of enabled clean ups
 	 */
@@ -2488,8 +2503,12 @@ public class Preferences {
 
 	/**
 	 * update the null analysis options of given project
-	 * @param javaProject the java project to update the annotation-based null analysis options
-	 * @param enabled specific whether the null analysis is enabled
+	 *
+	 * @param javaProject
+	 *            the java project to update the annotation-based null analysis
+	 *            options
+	 * @param enabled
+	 *            specific whether the null analysis is enabled
 	 * @return whether the options of the given project are changed or not
 	 */
 	public boolean updateAnnotationNullAnalysisOptions(IJavaProject javaProject, boolean enabled) {
@@ -2605,10 +2624,15 @@ public class Preferences {
 	}
 
 	/**
-	 * generates the null analysis options of the given nonnull type and nullable type
-	 * @param nonnullType the given nonnull type
-	 * @param nullableType the given nullable type
-	 * @return the map contains the null analysis options, if both given types are null, will return default null analysis options
+	 * generates the null analysis options of the given nonnull type and nullable
+	 * type
+	 *
+	 * @param nonnullType
+	 *            the given nonnull type
+	 * @param nullableType
+	 *            the given nullable type
+	 * @return the map contains the null analysis options, if both given types are
+	 *         null, will return default null analysis options
 	 */
 	private Map<String, String> generateProjectNullAnalysisOptions(String nonnullType, String nullableType, String nonnullbydefaultType) {
 		Map<String, String> options = new HashMap<>();

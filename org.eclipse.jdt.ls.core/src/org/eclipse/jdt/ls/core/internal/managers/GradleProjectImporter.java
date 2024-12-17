@@ -109,7 +109,8 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 	public static final String COMPATIBILITY_MARKER_ID = IConstants.PLUGIN_ID + ".gradlecompatibilityerrormarker";
 	public static final String GRADLE_UPGRADE_WRAPPER_MARKER_ID = IConstants.PLUGIN_ID + ".gradleupgradewrappermarker";
 
-	public static final String GRADLE_INVALID_TYPE_CODE_MESSAGE = "Exact exceptions are not shown due to an outdated Gradle version, please consider to update your Gradle version to " + GradleUtils.INVALID_TYPE_FIXED_VERSION + " and above.";
+	public static final String GRADLE_INVALID_TYPE_CODE_MESSAGE = "Exact exceptions are not shown due to an outdated Gradle version, please consider to update your Gradle version to " + GradleUtils.INVALID_TYPE_FIXED_VERSION
+			+ " and above.";
 
 	public static final String GRADLE_MARKER_COLUMN_START = "gradleColumnStart";
 	public static final String GRADLE_MARKER_COLUMN_END = "gradleColumnEnd";
@@ -123,7 +124,8 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 	 */
 	public static final String GRADLE_BUILD_SERVER_BUILDER_ID = "com.microsoft.gradle.bs.importer.builder.BuildServerBuilder";
 	/**
-	 * Builder id of the java problem checker, it's used to provide diagnostics during auto build for gradle build server projects.
+	 * Builder id of the java problem checker, it's used to provide diagnostics
+	 * during auto build for gradle build server projects.
 	 */
 	public static final String JAVA_PROBLEM_CHECKER_ID = "java.bs.JavaProblemChecker";
 
@@ -159,9 +161,7 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 			return false;
 		}
 		if (directories == null) {
-			BasicFileDetector gradleDetector = new BasicFileDetector(rootFolder.toPath(), BUILD_GRADLE_DESCRIPTOR,
-					SETTINGS_GRADLE_DESCRIPTOR, BUILD_GRADLE_KTS_DESCRIPTOR, SETTINGS_GRADLE_KTS_DESCRIPTOR)
-					.includeNested(false)
+			BasicFileDetector gradleDetector = new BasicFileDetector(rootFolder.toPath(), BUILD_GRADLE_DESCRIPTOR, SETTINGS_GRADLE_DESCRIPTOR, BUILD_GRADLE_KTS_DESCRIPTOR, SETTINGS_GRADLE_KTS_DESCRIPTOR).includeNested(false)
 					.addExclusions("**/build")//default gradle build dir
 					.addExclusions("**/bin");
 			for (IProject project : ProjectUtils.getAllProjects()) {
@@ -186,12 +186,8 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 			return false;
 		}
 
-		Collection<Path> configurationDirs = findProjectPathByConfigurationName(buildFiles, Arrays.asList(
-			BUILD_GRADLE_DESCRIPTOR,
-			SETTINGS_GRADLE_DESCRIPTOR,
-			BUILD_GRADLE_KTS_DESCRIPTOR,
-			SETTINGS_GRADLE_KTS_DESCRIPTOR
-		), true /*includeNested*/);
+		Collection<Path> configurationDirs = findProjectPathByConfigurationName(buildFiles, Arrays.asList(BUILD_GRADLE_DESCRIPTOR, SETTINGS_GRADLE_DESCRIPTOR, BUILD_GRADLE_KTS_DESCRIPTOR, SETTINGS_GRADLE_KTS_DESCRIPTOR),
+				true /*includeNested*/);
 		if (configurationDirs == null || configurationDirs.isEmpty()) {
 			return false;
 		}
@@ -203,14 +199,12 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 			}
 		}
 
-		this.directories = configurationDirs.stream()
-			.filter(d -> {
-				boolean folderIsImported = noneGradleProjectPaths.stream().anyMatch(path -> {
-					return path.compareTo(d) == 0;
-				});
-				return !folderIsImported;
-			})
-			.collect(Collectors.toList());
+		this.directories = configurationDirs.stream().filter(d -> {
+			boolean folderIsImported = noneGradleProjectPaths.stream().anyMatch(path -> {
+				return path.compareTo(d) == 0;
+			});
+			return !folderIsImported;
+		}).collect(Collectors.toList());
 
 		return !this.directories.isEmpty();
 	}
@@ -236,6 +230,7 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 		inferGradleJavaHome(directoriesToImport.iterator().next(), monitor);
 		MultiStatus compatibilityStatus = new MultiStatus(IConstants.PLUGIN_ID, -1, "Compatibility issue occurs when importing Gradle projects", null);
 		MultiStatus gradleUpgradeWrapperStatus = new MultiStatus(IConstants.PLUGIN_ID, -1, "Gradle upgrade wrapper", null);
+		// TODO do we _really_ need to synchronize every project at startup?
 		for (Path directory : directoriesToImport) {
 			IStatus importStatus = importDir(directory, subMonitor.newChild(1));
 			if (isFailedStatus(importStatus) && importStatus instanceof GradleCompatibilityStatus) {
@@ -297,7 +292,7 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 				if (!wrapperProperties.exists()) {
 					continue;
 				}
-				try (LineNumberReader reader = new LineNumberReader(new InputStreamReader(wrapperProperties.getContents()))){
+				try (LineNumberReader reader = new LineNumberReader(new InputStreamReader(wrapperProperties.getContents()))) {
 					String line;
 					while ((line = reader.readLine()) != null) {
 						if (line.contains("distributionUrl")) {
@@ -547,8 +542,7 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 		File javaHome = getGradleJavaHomeFile();
 		if (javaHome == null) {
 			IVMInstall javaDefaultRuntime = JavaRuntime.getDefaultVMInstall();
-			return javaDefaultRuntime != null
-				&& javaDefaultRuntime.getVMRunner(ILaunchManager.RUN_MODE) != null;
+			return javaDefaultRuntime != null && javaDefaultRuntime.getVMRunner(ILaunchManager.RUN_MODE) != null;
 		}
 
 		return false;
@@ -611,11 +605,11 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 	 * update the gradle wrapper to the given version
 	 *
 	 * @param projectUri
-	 *                          uri of the project
+	 *            uri of the project
 	 * @param gradleVersion
-	 *                          the target gradle version
+	 *            the target gradle version
 	 * @param monitor
-	 *                          the progress monitor
+	 *            the progress monitor
 	 * @return the path to the new gradle-wrapper.properties file
 	 *
 	 *         Upgrade the Gradle version in given project uri. The method includes
@@ -696,13 +690,13 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 
 		// Add init script of protobuf support
 		if (preferencesManager.getPreferences().isProtobufSupportEnabled()) {
-			File protobufInitScript =  GradleUtils.getGradleInitScript("/gradle/protobuf/init.gradle");
+			File protobufInitScript = GradleUtils.getGradleInitScript("/gradle/protobuf/init.gradle");
 			addInitScriptToArgs(protobufInitScript, args);
 		}
 
 		// Add init script of android support
 		if (preferencesManager.getPreferences().isAndroidSupportEnabled()) {
-			File androidInitScript =  GradleUtils.getGradleInitScript("/gradle/android/init.gradle");
+			File androidInitScript = GradleUtils.getGradleInitScript("/gradle/android/init.gradle");
 			addInitScriptToArgs(androidInitScript, args);
 		}
 
@@ -717,27 +711,21 @@ public class GradleProjectImporter extends AbstractProjectImporter {
 	}
 
 	@Override
-	public void reset() {
-	}
+	public void reset() {}
 
 	public static boolean isFailedStatus(IStatus status) {
 		return status != null && !status.isOK() && status.getException() != null;
 	}
 
 	/**
-	 * Eliminate the footprint of the Gradle build server projects. This is necessary
-	 * cleanup in case that user uninstalls/disables the gradle extension.
+	 * Eliminate the footprint of the Gradle build server projects. This is
+	 * necessary cleanup in case that user uninstalls/disables the gradle extension.
 	 */
 	private static void eliminateBuildServerFootprint(IProgressMonitor monitor) {
 		for (IProject project : ProjectUtils.getAllProjects()) {
 			try {
 				if (ProjectUtils.hasNature(project, GRADLE_BUILD_SERVER_NATURE)) {
-					GradleUtils.removeConfigurationFromProjectDescription(
-						project,
-						new HashSet<>(Arrays.asList(GRADLE_BUILD_SERVER_NATURE)),
-						new HashSet<>(Arrays.asList(GRADLE_BUILD_SERVER_BUILDER_ID, JAVA_PROBLEM_CHECKER_ID)),
-						monitor
-					);
+					GradleUtils.removeConfigurationFromProjectDescription(project, new HashSet<>(Arrays.asList(GRADLE_BUILD_SERVER_NATURE)), new HashSet<>(Arrays.asList(GRADLE_BUILD_SERVER_BUILDER_ID, JAVA_PROBLEM_CHECKER_ID)), monitor);
 				}
 			} catch (CoreException e) {
 				JavaLanguageServerPlugin.logException("Failed to remove Gradle build server configuration from project description", e);

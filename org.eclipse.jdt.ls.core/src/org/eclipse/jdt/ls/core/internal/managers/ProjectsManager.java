@@ -112,7 +112,7 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 	}
 
 	@Override
-	public void initializeProjects(final Collection<IPath> rootPaths, IProgressMonitor monitor) throws CoreException, OperationCanceledException {
+	public void initializeProjects(final Collection<IPath> rootPaths, final Optional<IPath> subProjectPath, IProgressMonitor monitor) throws CoreException, OperationCanceledException {
 		if (!preferenceManager.getClientPreferences().skipProjectConfiguration()) {
 			SubMonitor subMonitor = SubMonitor.convert(monitor, 100);
 			cleanInvalidProjects(rootPaths, subMonitor.split(20));
@@ -123,7 +123,7 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 			Collection<IPath> projectConfigurations = preferenceManager.getPreferences().getProjectConfigurations();
 			if (projectConfigurations == null) {
 				// old way to import project
-				importProjects(rootPaths, subMonitor.split(70));
+				importProjects(rootPaths, subProjectPath, subMonitor.split(70));
 			} else {
 				importProjectsFromConfigurationFiles(rootPaths, projectConfigurations, monitor);
 			}
@@ -152,29 +152,39 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 		}
 	}
 
-	protected void importProjects(Collection<IPath> rootPaths, IProgressMonitor monitor) throws CoreException, OperationCanceledException {
-		SubMonitor subMonitor = SubMonitor.convert(monitor, rootPaths.size() * 100);
+	protected void importProjects(Collection<IPath> rootPaths, Optional<IPath> subProjectPath, IProgressMonitor monitor) throws CoreException, OperationCanceledException {
 		MultiStatus importStatusCollection = new MultiStatus(IConstants.PLUGIN_ID, -1, "Failed to import projects", null);
-		for (IPath rootPath : rootPaths) {
-			File rootFolder = rootPath.toFile();
-			try {
-				for (IProjectImporter importer : importers()) {
-					importer.initialize(rootFolder);
-					if (importer.applies(subMonitor.split(1))) {
-						importer.importToWorkspace(subMonitor.split(70));
-						if (importer.isResolved(rootFolder)) {
-							break;
-						}
-					}
-				}
-			} catch (CoreException e) {
-				// if a rootPath import failed, keep importing the next rootPath
-				importStatusCollection.add(e.getStatus());
-				JavaLanguageServerPlugin.logException("Failed to import projects", e);
+		if (subProjectPath.isPresent()) {
+			SubMonitor subMonitor = SubMonitor.convert(monitor, 1);
+			File projectFolder = subProjectPath.get().toFile();
+			importProject(importStatusCollection, subMonitor, projectFolder);
+		} else {
+			SubMonitor subMonitor = SubMonitor.convert(monitor, rootPaths.size() * 100);
+			for (IPath rootPath : rootPaths) {
+				File rootFolder = rootPath.toFile();
+				importProject(importStatusCollection, subMonitor, rootFolder);
 			}
 		}
 		if (!importStatusCollection.isOK()) {
 			throw new CoreException(importStatusCollection);
+		}
+	}
+
+	private void importProject(MultiStatus status, SubMonitor subMonitor, File folder) {
+		try {
+			for (IProjectImporter importer : importers()) {
+				importer.initialize(folder);
+				if (importer.applies(subMonitor.split(1))) {
+					importer.importToWorkspace(subMonitor.split(70));
+					if (importer.isResolved(folder)) {
+						break;
+					}
+				}
+			}
+		} catch (CoreException e) {
+			// if a rootPath import failed, keep importing the next rootPath
+			status.add(e.getStatus());
+			JavaLanguageServerPlugin.logException("Failed to import projects", e);
 		}
 	}
 
@@ -183,8 +193,7 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 		MultiStatus importStatusCollection = new MultiStatus(IConstants.PLUGIN_ID, -1, "Failed to import projects", null);
 		for (IPath rootPath : rootPaths) {
 			File rootFolder = rootPath.toFile();
-			Set<IPath> buildFiles = projectConfigurations.stream()
-					.filter(rootPath::isPrefixOf).collect(Collectors.toSet());
+			Set<IPath> buildFiles = projectConfigurations.stream().filter(rootPath::isPrefixOf).collect(Collectors.toSet());
 			try {
 				for (IProjectImporter importer : importers()) {
 					importer.initialize(rootFolder);
@@ -205,15 +214,13 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 	}
 
 	private Set<IPath> removeImportedConfigurations(Set<IPath> configurations, IProjectImporter importer) {
-		return configurations.stream()
-			.filter(config -> {
-				try {
-					return !importer.isResolved(config.toFile());
-				} catch (OperationCanceledException | CoreException e) {
-					return true;
-				}
-			})
-			.collect(Collectors.toSet());
+		return configurations.stream().filter(config -> {
+			try {
+				return !importer.isResolved(config.toFile());
+			} catch (OperationCanceledException | CoreException e) {
+				return true;
+			}
+		}).collect(Collectors.toSet());
 	}
 
 	public void importProjects(IProgressMonitor monitor) {
@@ -222,15 +229,13 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 			@Override
 			public IStatus runInWorkspace(IProgressMonitor monitor) throws CoreException {
 				try {
-					importProjects(preferenceManager.getPreferences().getRootPaths(), monitor);
+					importProjects(preferenceManager.getPreferences().getRootPaths(), preferenceManager.getPreferences().getSubProjectPath(), monitor);
 				} catch (OperationCanceledException e) {
 					return Status.CANCEL_STATUS;
 				} catch (CoreException e) {
 					return new Status(Status.ERROR, IConstants.PLUGIN_ID, "Importing projects failed.", e);
 				}
-				List<URI> projectUris = Arrays.stream(getWorkspaceRoot().getProjects())
-					.map(project -> ProjectUtils.getProjectRealFolder(project).toFile().toURI())
-					.collect(Collectors.toList());
+				List<URI> projectUris = Arrays.stream(getWorkspaceRoot().getProjects()).map(project -> ProjectUtils.getProjectRealFolder(project).toFile().toURI()).collect(Collectors.toList());
 
 				EventNotification notification = new EventNotification().withType(EventType.ProjectsImported).withData(projectUris);
 				client.sendEventNotification(notification);
@@ -242,8 +247,7 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 		job.schedule();
 	}
 
-	public void changeImportedProjects(Collection<String> toImport, Collection<String> toUpdate,
-			Collection<String> toDelete, IProgressMonitor monitor) {
+	public void changeImportedProjects(Collection<String> toImport, Collection<String> toUpdate, Collection<String> toDelete, IProgressMonitor monitor) {
 		Set<IPath> filesToImport = new HashSet<>();
 		for (String uri : toImport) {
 			filesToImport.add(ResourceUtils.canonicalFilePathFromURI(uri));
@@ -316,7 +320,7 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 							}
 						}
 					}
-					importProjects(addedRootPaths, subMonitor.split(addedRootPaths.size()));
+					importProjects(addedRootPaths, Optional.empty(), subMonitor.split(addedRootPaths.size()));
 					registerWatchers(true);
 					long elapsed = System.currentTimeMillis() - start;
 
@@ -533,7 +537,8 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 	}
 
 	/**
-	 * Check if the build support for the specified project depends on the default VM.
+	 * Check if the build support for the specified project depends on the default
+	 * VM.
 	 */
 	public boolean useDefaultVM(IProject project, IVMInstall defaultVM) {
 		if (project == null) {
@@ -612,29 +617,25 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 	 * @see org.eclipse.core.resources.ISaveParticipant#doneSaving(org.eclipse.core.resources.ISaveContext)
 	 */
 	@Override
-	public void doneSaving(ISaveContext context) {
-	}
+	public void doneSaving(ISaveContext context) {}
 
 	/* (non-Javadoc)
 	 * @see org.eclipse.core.resources.ISaveParticipant#prepareToSave(org.eclipse.core.resources.ISaveContext)
 	 */
 	@Override
-	public void prepareToSave(ISaveContext context) throws CoreException {
-	}
+	public void prepareToSave(ISaveContext context) throws CoreException {}
 
 	/* (non-Javadoc)
 	 * @see org.eclipse.core.resources.ISaveParticipant#rollback(org.eclipse.core.resources.ISaveContext)
 	 */
 	@Override
-	public void rollback(ISaveContext context) {
-	}
+	public void rollback(ISaveContext context) {}
 
 	/* (non-Javadoc)
 	 * @see org.eclipse.core.resources.ISaveParticipant#saving(org.eclipse.core.resources.ISaveContext)
 	 */
 	@Override
-	public void saving(ISaveContext context) throws CoreException {
-	}
+	public void saving(ISaveContext context) throws CoreException {}
 
 	public static boolean setAutoBuilding(boolean enable) throws CoreException {
 		IWorkspace workspace = ResourcesPlugin.getWorkspace();
@@ -681,12 +682,10 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 			if (project.equals(getDefaultProject())) {
 				continue;
 			}
-			List<IResourceFilterDescription> filters = Stream.of(project.getFilters())
-					.filter(f -> {
-						FileInfoMatcherDescription matcher = f.getFileInfoMatcherDescription();
-						return CORE_RESOURCES_MATCHER_ID.equals(matcher.getId()) && matcher.getArguments() instanceof String args && args.contains(CREATED_BY_JAVA_LANGUAGE_SERVER);
-					})
-					.collect(Collectors.toList());
+			List<IResourceFilterDescription> filters = Stream.of(project.getFilters()).filter(f -> {
+				FileInfoMatcherDescription matcher = f.getFileInfoMatcherDescription();
+				return CORE_RESOURCES_MATCHER_ID.equals(matcher.getId()) && matcher.getArguments() instanceof String args && args.contains(CREATED_BY_JAVA_LANGUAGE_SERVER);
+			}).collect(Collectors.toList());
 			boolean filterExists = false;
 			for (IResourceFilterDescription filter : filters) {
 				if (resourceFilter == null || resourceFilter.isEmpty()) {
@@ -734,8 +733,7 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 			long start = System.currentTimeMillis();
 			MultiStatus status = new MultiStatus(IConstants.PLUGIN_ID, 0, "Update project configurations");
 			for (Entry<IBuildSupport, List<IProject>> entry : groupByBuildSupport(projects).entrySet()) {
-				IStatus onWillUpdateStatus = onWillConfigurationUpdate(entry.getKey(),
-						entry.getValue(), monitor);
+				IStatus onWillUpdateStatus = onWillConfigurationUpdate(entry.getKey(), entry.getValue(), monitor);
 
 				// if onWillUpdate() failed, skip updating the projects.
 				if (!onWillUpdateStatus.isOK()) {
@@ -761,8 +759,7 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 			Map<IBuildSupport, List<IProject>> groupByBuildSupport = new HashMap<>();
 			List<IBuildSupport> buildSupports = buildSupports().toList();
 			for (IProject project : projects) {
-				Optional<IBuildSupport> buildSupport = buildSupports.stream()
-						.filter(bs -> bs.applies(project)).findFirst();
+				Optional<IBuildSupport> buildSupport = buildSupports.stream().filter(bs -> bs.applies(project)).findFirst();
 				if (buildSupport.isPresent()) {
 					IBuildSupport bs = buildSupport.get();
 					groupByBuildSupport.computeIfAbsent(bs, k -> new ArrayList<>()).add(project);
@@ -771,8 +768,7 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 			return groupByBuildSupport;
 		}
 
-		private IStatus onWillConfigurationUpdate(IBuildSupport buildSupport, Collection<IProject> projects,
-				IProgressMonitor monitor) {
+		private IStatus onWillConfigurationUpdate(IBuildSupport buildSupport, Collection<IProject> projects, IProgressMonitor monitor) {
 			try {
 				buildSupport.onWillUpdate(projects, monitor);
 				return Status.OK_STATUS;
@@ -782,8 +778,7 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 			}
 		}
 
-		private void updateProject(IBuildSupport buildSupport, IProject project, boolean force,
-				MultiStatus status, IProgressMonitor monitor) {
+		private void updateProject(IBuildSupport buildSupport, IProject project, boolean force, MultiStatus status, IProgressMonitor monitor) {
 			try {
 				project.refreshLocal(IResource.DEPTH_INFINITE, monitor);
 				buildSupport.update(project, force, monitor);
@@ -834,19 +829,11 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 		}
 
 		private void importProjects(SubMonitor subMonitor) throws CoreException {
-			importProjectsFromConfigurationFiles(
-					preferenceManager.getPreferences().getRootPaths(),
-					filesToImport,
-					subMonitor.split(70)
-			);
-			List<URI> projectUris = filesToImport.stream()
-					.map(path -> {
-						IFile file = JDTUtils.findFile(path.toFile().toURI().toString());
-						return file == null ? null : file.getProject();
-					})
-					.filter(Objects::nonNull)
-					.map(project -> ProjectUtils.getProjectRealFolder(project).toFile().toURI())
-					.collect(Collectors.toList());
+			importProjectsFromConfigurationFiles(preferenceManager.getPreferences().getRootPaths(), filesToImport, subMonitor.split(70));
+			List<URI> projectUris = filesToImport.stream().map(path -> {
+				IFile file = JDTUtils.findFile(path.toFile().toURI().toString());
+				return file == null ? null : file.getProject();
+			}).filter(Objects::nonNull).map(project -> ProjectUtils.getProjectRealFolder(project).toFile().toURI()).collect(Collectors.toList());
 			if (!projectUris.isEmpty()) {
 				EventNotification notification = new EventNotification().withType(EventType.ProjectsImported).withData(projectUris);
 				client.sendEventNotification(notification);
@@ -875,8 +862,7 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 				URI locationURI = marker.getResource().getLocationURI();
 				if (locationURI != null) {
 					String uriString = locationURI.toString();
-					if (new File(locationURI).isDirectory() && Platform.OS_WIN32.equals(Platform.getOS()) &&
-							!uriString.endsWith("/")) {
+					if (new File(locationURI).isDirectory() && Platform.OS_WIN32.equals(Platform.getOS()) && !uriString.endsWith("/")) {
 						uriString += "/";
 					}
 					uris.add(uriString);
@@ -889,7 +875,6 @@ public abstract class ProjectsManager implements ISaveParticipant, IProjectsMana
 		}
 	}
 
-	public void checkIndexes() {
-	}
+	public void checkIndexes() {}
 
 }

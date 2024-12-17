@@ -113,7 +113,7 @@ public class SyntaxProjectsManager extends ProjectsManager {
 	}
 
 	@Override
-	protected void importProjects(Collection<IPath> rootPaths, IProgressMonitor monitor) throws CoreException, OperationCanceledException {
+	protected void importProjects(Collection<IPath> rootPaths, Optional<IPath> subProjectPath, IProgressMonitor monitor) throws CoreException, OperationCanceledException {
 		// do nothing at syntax server mode.
 	}
 
@@ -144,7 +144,7 @@ public class SyntaxProjectsManager extends ProjectsManager {
 				FileSystemWatcher watcher = new FileSystemWatcher(Either.forLeft(pattern));
 				fileWatchers.add(watcher);
 			}
-	
+
 			if (!patterns.equals(watchers)) {
 				JavaLanguageServerPlugin.logInfo(">> registerFeature 'workspace/didChangeWatchedFiles'");
 				DidChangeWatchedFilesRegistrationOptions didChangeWatchedFilesRegistrationOptions = new DidChangeWatchedFilesRegistrationOptions(fileWatchers);
